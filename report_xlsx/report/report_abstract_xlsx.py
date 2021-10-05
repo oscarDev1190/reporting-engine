@@ -5,7 +5,7 @@ import logging
 import re
 from io import BytesIO
 
-from odoo import models
+from odoo import models, modules
 
 _logger = logging.getLogger(__name__)
 
@@ -109,3 +109,38 @@ class ReportXlsxAbstract(models.AbstractModel):
 
     def generate_xlsx_report(self, workbook, data, objs):
         raise NotImplementedError()
+
+try:
+    import openpyxl
+except ImportError:
+    _logger.error("Can not import openpyxl.")
+
+
+class ReportXlsxOpenpyAbstract(ReportXlsxAbstract):
+    _name = "report.report_xlsx_openpyxl.abstract"
+    _description = "Abstract XLSX openpyxl Report"
+
+    # name and module where is the template document.
+    xlsx_template_name = None
+    xlsx_template_module = None
+
+    def _get_file_data(self):
+        xlsx_template = modules.get_module_resource(self.xlsx_template_module, self.xlsx_template_name)
+        if xlsx_template is False:
+            return BytesIO()
+        
+        xlsx_file  = open(xlsx_template, 'rb')
+        fp = BytesIO(xlsx_file.read())
+        xlsx_file.close()
+        fp.seek(0)
+        return fp
+
+    def create_xlsx_report(self, docids, data):
+        objs = self._get_objs_for_report(docids, data)
+        file_data = self._get_file_data()
+        workbook = openpyxl.load_workbook(file_data, **self.get_workbook_options())
+        self.generate_xlsx_report(workbook, data, objs)
+        workbook.save(file_data)
+        workbook.close()
+        file_data.seek(0)
+        return file_data.read(), "xlsx"
